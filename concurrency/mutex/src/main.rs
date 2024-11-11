@@ -5,98 +5,94 @@
 //!
 //! A from-scratch implementation of a Mutex (mutual exclusion) primitive for learning purposes.
 
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+mod mutex;
 
-const LOCKED: bool = true;
-const UNLOCKED: bool = false;
-
-struct Mutex<T> {
-    // usually has a data field
-    data: UnsafeCell<T>, // shared resource, this is not thread safe by default
-    locked: AtomicBool,  // by locks
-}
-
-unsafe impl<T> Sync for Mutex<T> where T: Send {} // this is a demo of what rust people claim to be fearlessly concurrency.
-                                                  // Send is for ownership transfer between threads
-                                                  // Sync is for shared references between threads
-
-impl<T> Mutex<T> {
-    // traits (behaviour) for Mutex
-    fn new(data: T) -> Self {
-        Self {
-            data: UnsafeCell::new(data),
-            locked: AtomicBool::new(UNLOCKED),
-        }
-    }
-
-    fn wrong_lock<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        // spin lock
-        while self.locked.load(Ordering::Relaxed) == LOCKED {
-            // keep spinning until lock is acquired
-            // this is a busy wait loop
-            // os will interrupt this thread and give time to other threads
-        }
-        self.locked.store(LOCKED, Ordering::Relaxed);
-        let res = f(unsafe { &mut *self.data.get() });
-        self.locked.store(UNLOCKED, Ordering::Relaxed); // release lock
-        res
-    }
-
-    fn still_wrong_lock<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        // spin lock
-        while self.locked.load(Ordering::Acquire) == LOCKED {
-            // keep spinning until lock is acquired
-        }
-        // not preemtively switch threads here.
-        // 1. out of order execution acquire/release only solves out of order execution
-        // 2. os can switch threads - still an open problem
-        self.locked.store(LOCKED, Ordering::Release);
-        let res = f(unsafe { &mut *self.data.get() });
-        self.locked.store(UNLOCKED, Ordering::Relaxed); // release lock
-        res
-    }
-
-    fn spin_lock<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        // spin lock
-        while self
-            .locked
-            .compare_exchange(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            // keep spinning until lock is acquired
-        }
-        let res = f(unsafe { &mut *self.data.get() });
-        self.locked.store(UNLOCKED, Ordering::Release); // release lock
-        res
-    }
-}
+use mutex::Mutex;
+use std::time::Instant;
 
 fn main() {
     println!("Hello, world! This is a mutex tutorial!");
 
-    let mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
+    let regular_mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
+    let hint_mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
 
-    // sp[a]wn threads
-    // acquire lock
-    let thread_handles = (0..2)
+    // Benchmark spin_lock
+    let n = 10000;
+    let m = 100000;
+    let start = Instant::now();
+    let thread_handles_spin_lock = (0..n)
         .map(|_| {
             std::thread::spawn(move || {
-                for _ in 0..10000 {
-                    mutex.spin_lock(|data| {
+                regular_mutex.spin_lock(|data| {
+                    for _ in 0..m {
                         *data += 1;
-                    })
-                }
+                    }
+                })
             })
         })
         .collect::<Vec<_>>();
 
-    // join threads
-    for handle in thread_handles {
-        handle.join().unwrap(); // wait for thread to finish
+    for handle in thread_handles_spin_lock {
+        handle.join().unwrap();
     }
+    let duration_spin_lock = start.elapsed();
+    let data_spin_lock = regular_mutex.spin_lock(|data| *data);
+    println!("Mutex data (spin_lock): {}", data_spin_lock);
+    assert!(data_spin_lock == n * m);
+    println!("Time taken by spin_lock: {:?}", duration_spin_lock);
 
-    let data = mutex.spin_lock(|data| *data);
-    println!("Mutex data: {}", data);
-    assert!(data == 2 * 10000);
+    // Benchmark spin_lock_with_hint
+    let start = Instant::now();
+    let thread_handles_spin_lock_with_hint = (0..n)
+        .map(|_| {
+            std::thread::spawn(move || {
+                hint_mutex.spin_lock_with_hint(|data| {
+                    for _ in 0..m {
+                        *data += 1;
+                    }
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for handle in thread_handles_spin_lock_with_hint {
+        handle.join().unwrap();
+    }
+    let duration_spin_lock_with_hint = start.elapsed();
+    let data_spin_lock_with_hint = hint_mutex.spin_lock_with_hint(|data| *data);
+    println!(
+        "Mutex data (spin_lock_with_hint): {}",
+        data_spin_lock_with_hint
+    );
+    assert!(data_spin_lock_with_hint == n * m);
+    println!(
+        "Time taken by spin_lock_with_hint: {:?}",
+        duration_spin_lock_with_hint
+    );
+
+    // Additional metrics
+    let speedup = duration_spin_lock.as_secs_f64() / duration_spin_lock_with_hint.as_secs_f64();
+    println!(
+        "Speedup of spin_lock_with_hint over spin_lock: {:.2}x",
+        speedup
+    );
+
+    let efficiency_spin_lock = (n * m) as f64 / duration_spin_lock.as_secs_f64();
+    let efficiency_spin_lock_with_hint =
+        (n * m) as f64 / duration_spin_lock_with_hint.as_secs_f64();
+    println!(
+        "Efficiency (spin_lock): {:.2} operations/sec",
+        efficiency_spin_lock
+    );
+    println!(
+        "Efficiency (spin_lock_with_hint): {:.2} operations/sec",
+        efficiency_spin_lock_with_hint
+    );
+
+    // compare efficiency of spin_lock_with_hint over spin_lock
+    let efficiency_ratio = efficiency_spin_lock_with_hint / efficiency_spin_lock;
+    println!(
+        "Efficiency ratio (spin_lock_with_hint / spin_lock): {:.2}x",
+        efficiency_ratio
+    );
 }
