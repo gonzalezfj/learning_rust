@@ -14,7 +14,7 @@ fn main() {
     println!("Hello, world! This is a mutex tutorial!");
 
     let regular_mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
-    let hint_mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
+    let mutex_with_hint: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
 
     // Benchmark spin_lock
     let n = 10000;
@@ -46,7 +46,7 @@ fn main() {
     let thread_handles_spin_lock_with_hint = (0..n)
         .map(|_| {
             std::thread::spawn(move || {
-                hint_mutex.spin_lock_with_hint(|data| {
+                mutex_with_hint.spin_lock_with_hint(|data| {
                     for _ in 0..m {
                         *data += 1;
                     }
@@ -59,7 +59,7 @@ fn main() {
         handle.join().unwrap();
     }
     let duration_spin_lock_with_hint = start.elapsed();
-    let data_spin_lock_with_hint = hint_mutex.spin_lock_with_hint(|data| *data);
+    let data_spin_lock_with_hint = mutex_with_hint.spin_lock_with_hint(|data| *data);
     println!(
         "Mutex data (spin_lock_with_hint): {}",
         data_spin_lock_with_hint
