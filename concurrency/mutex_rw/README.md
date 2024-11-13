@@ -19,13 +19,29 @@ This project implements a reader-writer spin lock synchronization primitive from
 
 ## 🚀 Implementation Details
 
-The implementation includes:
+The implementation uses two atomic counters:
 
-1. Atomic counter-based state tracking:
-   - 0 = unlocked
-   - 1 = write locked
-   - n > 1 = (n-1) read locks
-2. Safe concurrent read access
-3. Exclusive write access
-4. Memory ordering guarantees
-5. Spin-loop based waiting strategy
+- `readers`: Tracks number of active readers
+- `writer`: 0 = no writer, 1 = writer active
+
+Key aspects:
+
+1. Reader acquisition:
+   - Check no active writer
+   - Increment reader count atomically
+   - Double-check no writer sneaked in
+2. Writer acquisition:
+   - Set writer flag atomically
+   - Wait for all readers to finish
+3. Memory ordering guarantees via Acquire/Release semantics
+4. Spin-loop based waiting for better CPU efficiency
+
+## 🧪 Testing
+
+Includes comprehensive tests for:
+
+- Basic read/write functionality
+- Multiple concurrent readers
+- Writer blocking readers
+- Concurrent modifications
+- Performance benchmarks vs regular spinlock
