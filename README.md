@@ -6,22 +6,60 @@ Welcome to my exciting journey of learning Rust! This repository is my playgroun
 
 ### 1. 📚 Student Management System
 
-An interactive command-line application that brings student record management to life!
+A command-line application implementing a student record management system with quicksort!
 
 - 📂 Location: `/student_management_system`
-- 🎯 Status: In Progress and Growing!
+- 🎯 Status: In Progress
 - ✨ Features:
-  - Create, Read, Update, and Delete student records with ease
-  - Never lose your data with built-in file persistence
-  - Friendly command-line interface for smooth interactions
+  - Custom Student type with name, age, and grade fields
+  - Generic quicksort implementation for sorting students
+  - Multi-level sorting by grade, age, and name
+  - Proper handling of floating-point comparisons
+
+### 2. 🔒 Mutex Implementation
+
+A from-scratch implementation of mutex synchronization primitives!
+
+- 📂 Location: `/concurrency/mutex`
+- 🎯 Status: In Progress
+- ✨ Features:
+  - Custom mutex using atomic operations
+  - RAII-style lock guards (pending)
+  - Deadlock prevention (pending)
+  - Thread parking/unparking for efficiency (I'm not sure if it's implemented correctly)
+
+### 3. 🔒 Reader-Preference Read-Write Mutex Implementation
+
+A specialized mutex allowing multiple concurrent readers!
+
+- 📂 Location: `/concurrency/mutex_rw`
+- 🎯 Status: In Progress
+- ✨ Features:
+  - Multiple simultaneous read access
+  - Exclusive write access
+  - RAII-style lock guards (pending)
+  - Atomic-based synchronization
 
 ## 🏁 Getting Started
 
 ### 🔧 Prerequisites
 
-- Rust (latest stable version) - Your trusty companion
-- Cargo (comes bundled with Rust) - The magical build system
+- Rust (latest stable version)
+- Cargo (comes bundled with Rust)
 
 ### 🎮 Building and Running
 
-Ready to dive in? Each project is a self-contained adventure:
+Each project can be built and run independently:
+
+1. Navigate to a project directory:
+
+   ```bash
+   cd student_management_system  # or any other project directory
+   ```
+
+2. Build and run the project:
+   ```bash
+   cargo run
+   ```
+
+The project will compile and execute, displaying its output in the terminal.

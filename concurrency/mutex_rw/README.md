@@ -1,6 +1,6 @@
-# 🔒 RwSpinLock Implementation from Scratch
+# 🔒 Reader-Preference RwSpinLock Implementation
 
-This project implements a reader-writer spin lock synchronization primitive from scratch in Rust. A reader-writer lock allows multiple concurrent readers but only one writer at a time, providing efficient shared access while maintaining thread safety.
+This project implements a reader-writer spin lock synchronization primitive from scratch in Rust. The lock allows multiple concurrent readers while ensuring exclusive access for writers.
 
 ## 🎯 Learning Goals
 
@@ -14,7 +14,7 @@ This project implements a reader-writer spin lock synchronization primitive from
 - Custom RwSpinLock implementation using atomic operations
 - Multiple concurrent readers support
 - Exclusive writer access
-- Lock-free reader synchronization
+- Lock-free synchronization
 - Spin-waiting mechanism for efficiency
 
 ## 🚀 Implementation Details
@@ -22,17 +22,18 @@ This project implements a reader-writer spin lock synchronization primitive from
 The implementation uses two atomic counters:
 
 - `readers`: Tracks number of active readers
-- `writer`: 0 = no writer, 1 = writer active
+- `writer`: Indicates if a writer is active (0 = no writer, 1 = writer active)
 
 Key aspects:
 
 1. Reader acquisition:
    - Check no active writer
    - Increment reader count atomically
-   - Double-check no writer sneaked in
+   - Double check no writer acquired lock
 2. Writer acquisition:
    - Set writer flag atomically
    - Wait for all readers to finish
+   - Proceed when no readers present
 3. Memory ordering guarantees via Acquire/Release semantics
 4. Spin-loop based waiting for better CPU efficiency
 
