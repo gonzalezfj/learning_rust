@@ -8,91 +8,74 @@
 mod mutex;
 
 use mutex::Mutex;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
+
+fn run_mutex(name: &str, n: usize, m: usize) -> i32 {
+    // I don't know how to pass by parameter the lock function
+    let lock_fn = match name {
+        "spin_lock" => Mutex::spin_lock,
+        "spin_lock_with_hint" => Mutex::spin_lock_with_hint,
+        "spin_lock_with_hint_backoff" => Mutex::spin_lock_with_hint_backoff,
+        "spin_lock_with_park" => Mutex::spin_lock_with_park,
+        _ => panic!("Invalid mutex implementation: {}", name),
+    };
+
+    let mutex = Arc::new(Mutex::new(0));
+    let threads: Vec<_> = (0..n)
+        .map(|_| {
+            let mutex = Arc::clone(&mutex);
+            std::thread::spawn(move || {
+                lock_fn(&mutex, move |data: &mut i32| {
+                    for _ in 0..m {
+                        *data += 1;
+                    }
+                    *data
+                })
+            })
+        })
+        .collect();
+
+    // Join threads and handle errors more gracefully
+    for handle in threads {
+        if let Err(e) = handle.join() {
+            eprintln!("Thread panicked: {:?}", e);
+        }
+    }
+
+    // I don't know how to get away from this borrow checker error
+    let lock_fn = match name {
+        "spin_lock" => Mutex::spin_lock,
+        "spin_lock_with_hint" => Mutex::spin_lock_with_hint,
+        "spin_lock_with_hint_backoff" => Mutex::spin_lock_with_hint_backoff,
+        "spin_lock_with_park" => Mutex::spin_lock_with_park,
+        _ => panic!("Invalid mutex implementation: {}", name),
+    };
+
+    lock_fn(&mutex, |data: &mut i32| *data)
+}
+
+fn run_benchmark(name: &str, n: usize, m: usize) -> (std::time::Duration, i32) {
+    let start = Instant::now();
+    let data = run_mutex(name, n, m);
+    let duration = start.elapsed();
+    (duration, data)
+}
 
 fn main() {
     println!("Hello, world! This is a mutex tutorial!");
 
-    let regular_mutex: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
-    let mutex_with_hint: &'static Mutex<i32> = Box::leak(Box::new(Mutex::new(0)));
+    const N: usize = 10000;
+    const M: usize = 100000;
 
-    // Benchmark spin_lock
-    let n = 10000;
-    let m = 100000;
-    let start = Instant::now();
-    let thread_handles_spin_lock = (0..n)
-        .map(|_| {
-            std::thread::spawn(move || {
-                regular_mutex.spin_lock(|data| {
-                    for _ in 0..m {
-                        *data += 1;
-                    }
-                })
-            })
-        })
-        .collect::<Vec<_>>();
+    let mutex_implementations = [
+        "spin_lock",
+        "spin_lock_with_hint",
+        "spin_lock_with_hint_backoff",
+        "spin_lock_with_park",
+    ];
 
-    for handle in thread_handles_spin_lock {
-        handle.join().unwrap();
+    for &name in &mutex_implementations {
+        let (duration, eff) = run_benchmark(name, N, M);
+        println!("{}: {:?}, {}", name, duration, eff);
     }
-    let duration_spin_lock = start.elapsed();
-    let data_spin_lock = regular_mutex.spin_lock(|data| *data);
-    println!("Mutex data (spin_lock): {}", data_spin_lock);
-    assert!(data_spin_lock == n * m);
-    println!("Time taken by spin_lock: {:?}", duration_spin_lock);
-
-    // Benchmark spin_lock_with_hint
-    let start = Instant::now();
-    let thread_handles_spin_lock_with_hint = (0..n)
-        .map(|_| {
-            std::thread::spawn(move || {
-                mutex_with_hint.spin_lock_with_hint(|data| {
-                    for _ in 0..m {
-                        *data += 1;
-                    }
-                })
-            })
-        })
-        .collect::<Vec<_>>();
-
-    for handle in thread_handles_spin_lock_with_hint {
-        handle.join().unwrap();
-    }
-    let duration_spin_lock_with_hint = start.elapsed();
-    let data_spin_lock_with_hint = mutex_with_hint.spin_lock_with_hint(|data| *data);
-    println!(
-        "Mutex data (spin_lock_with_hint): {}",
-        data_spin_lock_with_hint
-    );
-    assert!(data_spin_lock_with_hint == n * m);
-    println!(
-        "Time taken by spin_lock_with_hint: {:?}",
-        duration_spin_lock_with_hint
-    );
-
-    // Additional metrics
-    let speedup = duration_spin_lock.as_secs_f64() / duration_spin_lock_with_hint.as_secs_f64();
-    println!(
-        "Speedup of spin_lock_with_hint over spin_lock: {:.2}x",
-        speedup
-    );
-
-    let efficiency_spin_lock = (n * m) as f64 / duration_spin_lock.as_secs_f64();
-    let efficiency_spin_lock_with_hint =
-        (n * m) as f64 / duration_spin_lock_with_hint.as_secs_f64();
-    println!(
-        "Efficiency (spin_lock): {:.2} operations/sec",
-        efficiency_spin_lock
-    );
-    println!(
-        "Efficiency (spin_lock_with_hint): {:.2} operations/sec",
-        efficiency_spin_lock_with_hint
-    );
-
-    // compare efficiency of spin_lock_with_hint over spin_lock
-    let efficiency_ratio = efficiency_spin_lock_with_hint / efficiency_spin_lock;
-    println!(
-        "Efficiency ratio (spin_lock_with_hint / spin_lock): {:.2}x",
-        efficiency_ratio
-    );
 }
