@@ -1,14 +1,13 @@
-use rand::Rng;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{sync::Arc, thread, time::Duration};
 
 pub struct RwSpinLock<T> {
-    // Uses a counter where:
-    // 0 = unlocked
-    // 1 = write locked
-    // n > 1 = (n-1) read locks
-    state: AtomicUsize,
+    // Uses two counters:
+    // readers: number of active readers
+    // writer: 0 = no writer, 1 = writer active
+    readers: AtomicUsize,
+    writer: AtomicUsize,
     data: UnsafeCell<T>,
 }
 
@@ -18,7 +17,8 @@ unsafe impl<T: Send> Sync for RwSpinLock<T> {}
 impl<T> RwSpinLock<T> {
     pub fn new(data: T) -> Self {
         Self {
-            state: AtomicUsize::new(0),
+            readers: AtomicUsize::new(0),
+            writer: AtomicUsize::new(0),
             data: UnsafeCell::new(data),
         }
     }
@@ -29,18 +29,16 @@ impl<T> RwSpinLock<T> {
     {
         // Try to acquire read lock
         loop {
-            let state = self.state.load(Ordering::Relaxed);
-            if state != 1 {
-                // Not write locked
-                match self.state.compare_exchange(
-                    state,
-                    state + 1,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => break,
-                    Err(_) => continue,
+            // Check if there's no active writer
+            if self.writer.load(Ordering::Relaxed) == 0 {
+                // Increment reader count
+                self.readers.fetch_add(1, Ordering::Acquire);
+                // Double check writer hasn't acquired lock
+                if self.writer.load(Ordering::Relaxed) == 0 {
+                    break;
                 }
+                // Writer got in, undo reader increment
+                self.readers.fetch_sub(1, Ordering::Release);
             }
             std::hint::spin_loop();
         }
@@ -49,7 +47,7 @@ impl<T> RwSpinLock<T> {
         let result = f(unsafe { &*self.data.get() });
 
         // Release read lock
-        self.state.fetch_sub(1, Ordering::Release);
+        self.readers.fetch_sub(1, Ordering::Release);
 
         result
     }
@@ -60,24 +58,26 @@ impl<T> RwSpinLock<T> {
     {
         // Try to acquire write lock
         loop {
-            match self
-                .state
+            // Try to set writer flag if no writer active
+            if self
+                .writer
                 .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
             {
-                Ok(_) => break,
-                Err(_) => {
-                    while self.state.load(Ordering::Relaxed) != 0 {
-                        std::hint::spin_loop();
-                    }
+                // Wait for all readers to finish
+                while self.readers.load(Ordering::Relaxed) != 0 {
+                    std::hint::spin_loop();
                 }
+                break;
             }
+            std::hint::spin_loop();
         }
 
         // Execute closure with mutable data
         let result = f(unsafe { &mut *self.data.get() });
 
         // Release write lock
-        self.state.store(0, Ordering::Release);
+        self.writer.store(0, Ordering::Release);
 
         result
     }
@@ -85,39 +85,20 @@ impl<T> RwSpinLock<T> {
 
 fn main() {
     let lock = Arc::new(RwSpinLock::new(0i32));
+    lock.write(|val| *val += 1);
+
     let mut handles = Vec::new();
-
-    // Spawn 4 writer threads
-    for i in 0..4 {
+    (0..10).for_each(|_| {
         let lock = Arc::clone(&lock);
-        handles.push(thread::spawn(move || {
-            let mut rng = rand::thread_rng();
-            loop {
-                let sleep_ms = rng.gen_range(0..1000);
-                thread::sleep(Duration::from_millis(sleep_ms));
-
-                lock.write(|val| {
-                    *val += 1;
-                    println!(
-                        "Thread {} incremented value to {} after sleeping for {}ms",
-                        i, *val, sleep_ms
-                    );
-                });
-            }
+        handles.push(std::thread::spawn(move || loop {
+            lock.read(|val| {
+                println!("Value: {}", *val);
+                thread::sleep(Duration::from_secs(1));
+            });
         }));
-    }
+    });
 
-    // Spawn reader thread
-    let lock = Arc::clone(&lock);
-    handles.push(thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(1));
-        lock.read(|val| {
-            println!("Reader: current value is {}", *val);
-        });
-    }));
-
-    // Wait for all threads
-    for handle in handles {
-        handle.join().unwrap();
-    }
+    handles
+        .into_iter()
+        .for_each(|handle| handle.join().unwrap());
 }
