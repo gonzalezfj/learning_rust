@@ -86,9 +86,10 @@ impl<T> Mutex<T> {
             for _ in 0..backoff {
                 std::hint::spin_loop();
             }
-            backoff = std::cmp::min(backoff * 2, 1024);
+            backoff = backoff * 2;
             if backoff >= 1024 {
                 std::thread::park();
+                backoff = 1;
             }
         }
         let res = f(unsafe { &mut *self.data.get() });
