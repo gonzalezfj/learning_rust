@@ -1,6 +1,9 @@
-fn say_hello() {
-    println!("Hello World")
-}
 fn main() {
-    say_hello()
+    let oranges = 10;
+    println!("oranges === {}", oranges);
+    {
+        let oranges = 25 + oranges;
+        println!("oranges === {}", oranges)
+    }
+    println!("oranges === {}", oranges)
 }
