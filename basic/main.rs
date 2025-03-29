@@ -1,6 +1,7 @@
 fn main() {
-    let x:() = ();
-    let y:() = println!("wow");
-    assert_eq!(x, y);
-    println!("All units are the same")
+    let x: i32 = {
+        println!("Inside the block");
+        10 + 5
+    };
+    println!("The result is {}", x)
 }
