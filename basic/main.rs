@@ -1,7 +1,6 @@
+fn say_hello() {
+    println!("Hello World")
+}
 fn main() {
-    let x: i32 = {
-        println!("Inside the block");
-        10 + 5
-    };
-    println!("The result is {}", x)
+    say_hello()
 }
